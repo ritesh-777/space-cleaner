@@ -81,20 +81,26 @@ curl -fsSL https://raw.githubusercontent.com/ritesh-777/space-cleaner/main/insta
 
 ## Development & Contribution
 
-The extension is designed with a **symbolic link workflow** in mind for rapid development:
+To set up a local development environment:
 
-1. Clone your repository:
+1. **Clone the repository** to any folder on your machine:
    ```bash
-   git clone https://github.com/ritesh-777/space-cleaner.git ~/Projects/Extensions/Gnome/space-cleaner
+   git clone https://github.com/ritesh-777/space-cleaner.git
+   cd space-cleaner
    ```
-2. Create a symlink to your local GNOME folder:
+
+2. **Link the repository** to your local GNOME Shell extensions directory:
    ```bash
-   ln -s ~/Projects/Extensions/Gnome/space-cleaner ~/.local/share/gnome-shell/extensions/space-cleaner@ritesh
+   mkdir -p ~/.local/share/gnome-shell/extensions/
+   ln -s "$(pwd)" ~/.local/share/gnome-shell/extensions/space-cleaner@ritesh
    ```
-3. Test backend changes live inside the command line without restarting:
+
+3. **Verify the backend** works correctly by running the Python helper script standalone in your terminal:
    ```bash
    python3 cleaner-helper.py scan
    ```
+
+4. **Reload GNOME Shell** (log out and back in) and enable the extension to start testing!
 
 ---
 
