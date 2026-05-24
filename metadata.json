@@ -1,0 +1,9 @@
+{
+  "uuid": "space-cleaner@ritesh",
+  "name": "GNOME Space Cleaner",
+  "description": "Clean temporary caches, trash, and system clutter directly from your top panel.",
+  "shell-version": [
+    "45", "46", "47", "48", "49", "50", "51"
+  ],
+  "url": "https://github.com/ritesh/gnome-space-cleaner"
+}
