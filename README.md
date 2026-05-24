@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/ritesh-777/space-cleaner/main/insta
 
 ---
 
-## Development & Contribution
+## Local Development
 
 To set up a local development environment:
 
@@ -102,8 +102,16 @@ To set up a local development environment:
 
 4. **Reload GNOME Shell** (log out and back in) and enable the extension to start testing!
 
----
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-This project is licensed under the **GNU GPLv3 License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.
