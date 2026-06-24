@@ -3,7 +3,7 @@
 [![GNOME Version](https://img.shields.io/badge/GNOME-45%20%7C%2046%20%7C%2047%20%7C%2048%20%7C%2049%20%7C%2050%20%7C%2051-blue.svg)](https://gjs.guide)
 [![License](https://img.shields.io/badge/License-GPLv3-red.svg)](LICENSE)
 
-A gorgeous, native-integrated GNOME Shell extension that acts as a central **Mission Control** to monitor and clean up temporary files, logs, developer caches, and system package manager archives directly from your top panel. 
+A gorgeous, native-integrated GNOME Shell extension that acts as a central **Mission Control** to monitor and clean up temporary files, logs, package caches, developer caches, browser caches, graphics shader caches, and system clutter directly from your top panel.
 
 The extension is designed for public release, fully **distribution-agnostic**, and completely **asynchronous**—meaning your desktop will remain 100% lag-free and responsive during scanning and file cleaning.
 
@@ -20,8 +20,12 @@ The extension is designed for public release, fully **distribution-agnostic**, a
     *   **openSUSE**: Displays **"Zypper Cache"** pointing to `/var/cache/zypp/packages`.
     *   **Gentoo**: Displays **"Portage Cache"** pointing to `/var/cache/distfiles` and `/var/cache/binpkgs`.
 *   **🛡️ Password Prompt Elevation only when needed**: The extension scans system directories inside user-space without any passwords (they are world-readable!). A graphical admin password prompt (`pkexec`) is triggered **only when the user clicks the "Clean" button** for system-space folders.
-*   **📝 Systemd Journal Vacuuming**: Safely vacuums large service logging caches inside `/var/log/journal` down to a secure 50MB threshold, retaining recent logs for diagnostic safety.
+*   **📝 Systemd Journal Vacuuming**: Safely rotates and vacuums large service logging caches inside `/var/log/journal` down to a secure 50MB threshold, retaining recent logs for diagnostic safety.
+*   **🧩 Arch, Manjaro, and AUR Awareness**: On Arch-based systems, Space Cleaner shows an AUR package cleanup row for built package artifacts from helpers such as Yay, Paru, Pikaur, Trizen, and Pamac build directories.
+*   **🧹 Safe Clean All Scope**: Clean All includes low-surprise cleanup targets such as trash, thumbnails, font cache, Flatpak cache, package cache, AUR package artifacts, journal cleanup, coredumps, Snap cleanup, and developer caches.
+*   **⚠️ Separate Browser & Shader Cleanup**: Browser and shader caches are shown as separate categories and excluded from Clean All because they can cause slower first page loads or temporary graphics/game stutter while caches rebuild.
 *   **🛠️ Developer Caches Support**: Easily reclaims gigabytes of forgotten local caches created by Python's **Pip**, Node's **NPM**, and **Yarn** package managers.
+*   **📁 XDG-Aware User Paths**: User cache/data paths respect `XDG_CACHE_HOME` and `XDG_DATA_HOME` where applicable.
 
 ---
 
@@ -38,6 +42,11 @@ Removes file preview images in `~/.cache/thumbnails`. Cleaning this is safe; GNO
 </details>
 
 <details>
+<summary><b>🔤 Font Cache</b> (Safe to clean)</summary>
+Removes generated fontconfig cache files in `~/.cache/fontconfig` or `$XDG_CACHE_HOME/fontconfig`. Applications and fontconfig rebuild these files automatically when fonts are needed.
+</details>
+
+<details>
 <summary><b>📱 Flatpak & Snap Caches</b> (Safe to clean)</summary>
 Cleans local caches in `~/.cache/flatpak` and individual flatpak container caches. For Snaps, it cleans downloaded archives in `/var/lib/snapd/cache` and purges <b>disabled/inactive revisions</b> of installed Snap packages (which normally accumulate and consume massive space!).
 </details>
@@ -48,13 +57,33 @@ Cleans compiled package files (`.rpm`, `.deb`, `.pkg.tar.zst`) left behind in `/
 </details>
 
 <details>
+<summary><b>📦 AUR Packages</b> (Arch-based systems only)</summary>
+Removes built AUR package artifacts (`*.pkg.tar*`) from common helper caches including Yay, Paru, Pikaur, Trizen, Pacaur, Aurman, and Manjaro Pamac build locations such as `/var/tmp/pamac-build-$USER`. It keeps source/build directories and PKGBUILDs intact.
+</details>
+
+<details>
 <summary><b>⚙️ System Journal Logs</b> (Safe to clean)</summary>
-Cleans large log archives. Keeps your logs within a safe, manageable 50MB threshold so your disk never fills up with old background service records.
+Cleans large log archives by rotating active journals and vacuuming archived journals. Keeps your logs within a safe, manageable 50MB threshold so your disk never fills up with old background service records.
+</details>
+
+<details>
+<summary><b>💥 System Coredumps</b> (Safe to clean)</summary>
+Removes crash dump files in `/var/lib/systemd/coredump`. These are useful only when debugging old crashes; deleting them does not remove applications or settings.
 </details>
 
 <details>
 <summary><b>☕ Developer Caches</b> (Safe to clean)</summary>
-Cleans package manager folders used by programmers (NPM caches, Pip wheels, Yarn registries) that grow dynamically inside the home folder. Caches are safely deleted; package managers will simply fetch dependencies from online registries on the next build.
+Cleans package manager folders used by programmers, including Pip cache, NPM `_cacache`, `_npx`, `_logs`, and Yarn caches. Caches are safely deleted; package managers will fetch dependencies from online registries on the next build.
+</details>
+
+<details>
+<summary><b>🌐 Browser Cache</b> (Separate cleanup; excluded from Clean All)</summary>
+Removes cache-only directories for Firefox and Chromium-family browsers. Cookies, history, bookmarks, saved logins, and browser profiles are not cleaned. This category is separate because pages can load slower after cleaning and offline web caches may need to rebuild.
+</details>
+
+<details>
+<summary><b>🎮 Shader Cache</b> (Separate cleanup; excluded from Clean All)</summary>
+Removes graphics shader cache directories such as Mesa, Vulkan, and NVIDIA shader caches. This category is separate because games and graphics-heavy apps may stutter temporarily while shaders rebuild.
 </details>
 
 ---
