@@ -41,9 +41,40 @@ DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share"))
 NPM_CACHE_DIR = os.environ.get("npm_config_cache", os.path.join(HOME, ".npm"))
 TRASH_DIR = os.path.join(DATA_HOME, "Trash")
 THUMBNAILS_DIR = os.path.join(CACHE_HOME, "thumbnails")
+FONTCONFIG_CACHE_DIR = os.path.join(CACHE_HOME, "fontconfig")
 FLATPAK_CACHE_DIR = os.path.join(CACHE_HOME, "flatpak")
 PACMAN_CACHE_DIR = "/var/cache/pacman/pkg"
+COREDUMP_DIR = "/var/lib/systemd/coredump"
 JOURNAL_VACUUM_TARGET_BYTES = 50 * 1024 * 1024
+FIREFOX_CACHE_ROOTS = [
+    os.path.join(CACHE_HOME, "mozilla/firefox"),
+]
+CHROMIUM_CACHE_ROOTS = [
+    os.path.join(CACHE_HOME, "chromium"),
+    os.path.join(CACHE_HOME, "google-chrome"),
+    os.path.join(CACHE_HOME, "google-chrome-beta"),
+    os.path.join(CACHE_HOME, "google-chrome-unstable"),
+    os.path.join(CACHE_HOME, "BraveSoftware/Brave-Browser"),
+    os.path.join(CACHE_HOME, "microsoft-edge"),
+    os.path.join(CACHE_HOME, "vivaldi"),
+]
+CHROMIUM_CACHE_DIR_NAMES = [
+    "Cache",
+    "Code Cache",
+    "GPUCache",
+    "DawnCache",
+    "GrShaderCache",
+    "ShaderCache",
+]
+SHADER_CACHE_DIRS = [
+    os.path.join(CACHE_HOME, "mesa_shader_cache"),
+    os.path.join(CACHE_HOME, "mesa_shader_cache_db"),
+    os.path.join(CACHE_HOME, "vulkan"),
+    os.path.join(CACHE_HOME, "nvidia/GLCache"),
+    os.path.join(CACHE_HOME, "nvidia/ComputeCache"),
+    os.path.join(CACHE_HOME, "NVIDIA/GLCache"),
+    os.path.join(CACHE_HOME, "NVIDIA/ComputeCache"),
+]
 AUR_CACHE_ROOTS = [
     os.path.join(CACHE_HOME, "yay"),
     os.path.join(CACHE_HOME, "paru/clone"),
@@ -136,6 +167,67 @@ def iter_aur_package_artifacts():
         except Exception:
             continue
 
+def is_path_inside(path, base_dir):
+    """
+    Checks realpath containment to avoid following cache symlinks elsewhere.
+    """
+    try:
+        real_path = os.path.realpath(path)
+        real_base = os.path.realpath(base_dir)
+        return real_path == real_base or real_path.startswith(real_base + os.sep)
+    except Exception:
+        return False
+
+def unique_existing_paths(paths, base_dirs=None):
+    """
+    Returns existing paths once, preserving input order.
+    """
+    seen = set()
+    result = []
+    for path in paths:
+        normalized = os.path.abspath(path)
+        if normalized in seen or not os.path.exists(normalized) or os.path.islink(normalized):
+            continue
+        if base_dirs and not any(is_path_inside(normalized, base_dir) for base_dir in base_dirs):
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
+
+def get_browser_cache_paths():
+    """
+    Returns known browser cache directories without touching profile data.
+    """
+    paths = []
+
+    for firefox_root in FIREFOX_CACHE_ROOTS:
+        if not os.path.isdir(firefox_root):
+            continue
+        for profile in list_dir_entries(firefox_root):
+            if os.path.isdir(profile) and not os.path.islink(profile):
+                paths.append(os.path.join(profile, "cache2"))
+                paths.append(os.path.join(profile, "startupCache"))
+
+    for browser_root in CHROMIUM_CACHE_ROOTS:
+        if not os.path.isdir(browser_root):
+            continue
+        candidate_profiles = [browser_root]
+        candidate_profiles.extend(
+            path for path in list_dir_entries(browser_root)
+            if os.path.isdir(path) and not os.path.islink(path)
+        )
+        for profile in candidate_profiles:
+            for cache_name in CHROMIUM_CACHE_DIR_NAMES:
+                paths.append(os.path.join(profile, cache_name))
+
+    return unique_existing_paths(paths, [CACHE_HOME])
+
+def get_shader_cache_paths():
+    """
+    Returns known graphics shader cache directories.
+    """
+    return unique_existing_paths(SHADER_CACHE_DIRS, [CACHE_HOME])
+
 def get_dir_size(path):
     """
     Recursively calculates the total storage size of a directory in bytes.
@@ -220,6 +312,12 @@ def get_thumbnails_size():
     """
     return get_dir_size(THUMBNAILS_DIR)
 
+def get_font_cache_size():
+    """
+    Calculates the size of fontconfig's generated font cache.
+    """
+    return get_dir_size(FONTCONFIG_CACHE_DIR)
+
 def get_flatpak_size():
     """
     Calculates size of user-level Flatpak runtime caches and app caches.
@@ -279,6 +377,24 @@ def get_journal_size():
     """
     usage = get_dir_disk_usage("/var/log/journal")
     return max(usage - JOURNAL_VACUUM_TARGET_BYTES, 0)
+
+def get_coredumps_size():
+    """
+    Calculates the size of systemd coredump files.
+    """
+    return get_dir_size(COREDUMP_DIR)
+
+def get_browser_cache_size():
+    """
+    Calculates the size of browser cache directories.
+    """
+    return sum(get_dir_size(path) for path in get_browser_cache_paths())
+
+def get_shader_cache_size():
+    """
+    Calculates the size of graphics shader cache directories.
+    """
+    return sum(get_dir_size(path) for path in get_shader_cache_paths())
 
 def get_snap_size():
     """
@@ -350,6 +466,7 @@ def scan():
     data = {
         "trash": get_trash_size(),
         "thumbnails": get_thumbnails_size(),
+        "font_cache": get_font_cache_size(),
         "flatpak": get_flatpak_size(),
         "snap": get_snap_size(),
         "packages": pkg_size,
@@ -357,7 +474,10 @@ def scan():
         "arch_based": is_arch_based(),
         "aur_packages": get_aur_packages_size(),
         "journal": get_journal_size(),
+        "coredumps": get_coredumps_size(),
         "dev_caches": get_dev_caches_size(),
+        "browser_cache": get_browser_cache_size(),
+        "shader_cache": get_shader_cache_size(),
     }
     print(json.dumps(data))
 
@@ -405,6 +525,23 @@ def clean_thumbnails():
                 except Exception:
                     pass
     return freed
+
+def clean_font_cache():
+    """
+    Deletes generated fontconfig cache files.
+    """
+    before = get_font_cache_size()
+    if os.path.exists(FONTCONFIG_CACHE_DIR):
+        for item_path in list_dir_entries(FONTCONFIG_CACHE_DIR):
+            try:
+                if os.path.isdir(item_path) and not os.path.islink(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
+            except Exception:
+                pass
+    after = get_font_cache_size()
+    return max(before - after, 0)
 
 def clean_flatpak():
     """
@@ -560,6 +697,55 @@ def clean_pacman_cache_root():
     freed = remove_path_contents(PACMAN_CACHE_DIR)
     print(json.dumps({"category": "packages", "freed": freed}))
 
+def clean_coredumps():
+    """
+    Elevates permissions to delete stored systemd coredump files.
+    """
+    before = get_coredumps_size()
+    helper_path = os.path.abspath(__file__)
+    run_checked(["pkexec", "python3", helper_path, "clean-coredumps-root"])
+    after = get_coredumps_size()
+    return max(before - after, 0)
+
+def clean_coredumps_root():
+    """
+    Root-only coredump cleanup used through pkexec.
+    """
+    if os.geteuid() != 0:
+        raise RuntimeError("Coredump cleanup requires administrator privileges.")
+    freed = remove_path_contents(COREDUMP_DIR)
+    print(json.dumps({"category": "coredumps", "freed": freed}))
+
+def clean_paths(paths, size_func):
+    """
+    Deletes a set of cache paths and returns bytes actually removed.
+    """
+    before = size_func()
+    for path in paths:
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            elif os.path.islink(path):
+                continue
+            else:
+                os.remove(path)
+        except Exception:
+            pass
+    after = size_func()
+    return max(before - after, 0)
+
+def clean_browser_cache():
+    """
+    Deletes known browser cache directories.
+    """
+    return clean_paths(get_browser_cache_paths(), get_browser_cache_size)
+
+def clean_shader_cache():
+    """
+    Deletes known graphics shader cache directories.
+    """
+    return clean_paths(get_shader_cache_paths(), get_shader_cache_size)
+
 def clean_journal():
     """
     Elevates permissions via pkexec to vacuum systemd logs down to a safe 50MB.
@@ -581,6 +767,8 @@ def clean(category):
         freed = clean_trash()
     elif category == "thumbnails":
         freed = clean_thumbnails()
+    elif category == "font_cache":
+        freed = clean_font_cache()
     elif category == "flatpak":
         freed = clean_flatpak()
     elif category == "dev_caches":
@@ -593,6 +781,12 @@ def clean(category):
         freed = clean_aur_packages()
     elif category == "journal":
         freed = clean_journal()
+    elif category == "coredumps":
+        freed = clean_coredumps()
+    elif category == "browser_cache":
+        freed = clean_browser_cache()
+    elif category == "shader_cache":
+        freed = clean_shader_cache()
     print(json.dumps({"category": category, "freed": freed}))
 
 def clean_all():
@@ -600,15 +794,29 @@ def clean_all():
     Executes a sequential cleanup of all cached categories and outputs total freed space.
     """
     freed = 0
-    freed += clean_trash()
-    freed += clean_thumbnails()
-    freed += clean_flatpak()
-    freed += clean_dev_caches()
-    freed += clean_snap()
-    freed += clean_packages()
-    freed += clean_aur_packages()
-    freed += clean_journal()
-    print(json.dumps({"category": "all", "freed": freed}))
+    errors = []
+    categories = [
+        ("trash", get_trash_size, clean_trash),
+        ("thumbnails", get_thumbnails_size, clean_thumbnails),
+        ("font_cache", get_font_cache_size, clean_font_cache),
+        ("flatpak", get_flatpak_size, clean_flatpak),
+        ("dev_caches", get_dev_caches_size, clean_dev_caches),
+        ("snap", get_snap_size, clean_snap),
+        ("packages", lambda: get_package_cache_details()[1], clean_packages),
+        ("aur_packages", get_aur_packages_size, clean_aur_packages),
+        ("journal", get_journal_size, clean_journal),
+        ("coredumps", get_coredumps_size, clean_coredumps),
+    ]
+
+    for category, size_func, clean_func in categories:
+        try:
+            if size_func() <= 0:
+                continue
+            freed += clean_func()
+        except Exception as err:
+            errors.append({"category": category, "error": str(err)})
+
+    print(json.dumps({"category": "all", "freed": freed, "errors": errors}))
 
 def main():
     """
@@ -627,6 +835,8 @@ def main():
         clean(sys.argv[2])
     elif cmd == "clean-pacman-cache-root":
         clean_pacman_cache_root()
+    elif cmd == "clean-coredumps-root":
+        clean_coredumps_root()
     else:
         print(f"Unknown command or missing argument: {cmd}")
         sys.exit(1)

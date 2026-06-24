@@ -36,6 +36,10 @@ const CATEGORIES = {
         label: 'Thumbnail Cache', 
         desc: 'Stores cached previews of images and videos. Cleaning is safe; GNOME will regenerate them as needed.' 
     },
+    'font_cache': {
+        label: 'Font Cache',
+        desc: 'Stores generated font lookup caches. Cleaning is safe; fontconfig rebuilds them automatically when applications need fonts.'
+    },
     'flatpak': { 
         label: 'Flatpak Cache', 
         desc: 'Stores temporary caches from Flatpak applications. Cleaning is safe and won\'t affect your installed apps.' 
@@ -56,9 +60,23 @@ const CATEGORIES = {
         label: 'System Journal', 
         desc: 'Logs recorded by system services. Cleaning vacuums them down to 50MB, preserving recent diagnostics.' 
     },
+    'coredumps': {
+        label: 'System Coredumps',
+        desc: 'Crash dump files saved for debugging past application crashes. Cleaning is safe if you do not need to inspect old crashes.'
+    },
     'dev_caches': { 
         label: 'Developer Caches', 
         desc: 'Caches from NPM, Yarn, and Pip. Safe to clean; tools will re-download packages from registries when needed.' 
+    },
+    'browser_cache': {
+        label: 'Browser Cache (Separate)',
+        desc: 'Warning: separate from Clean All because pages may load slower after cleaning and offline web caches may be rebuilt. Cookies, history, and saved logins are not cleaned.',
+        cleanAll: false
+    },
+    'shader_cache': {
+        label: 'Shader Cache (Separate)',
+        desc: 'Warning: separate from Clean All because games and graphics apps may stutter while shaders rebuild after cleaning.',
+        cleanAll: false
     }
 };
 
@@ -151,7 +169,7 @@ export default class SpaceCleanerExtension extends Extension {
 
             // Action Button for cleaning just this specific category
             let btn = new St.Button({
-                label: 'Clean Category',
+                label: CATEGORIES[key].cleanAll === false ? 'Clean Separately' : 'Clean Category',
                 style_class: 'space-cleaner-sub-btn',
                 x_expand: true
             });
@@ -303,7 +321,8 @@ export default class SpaceCleanerExtension extends Extension {
                     }
 
                     let bytes = data[key] || 0;
-                    totalCleanable += bytes;
+                    if (CATEGORIES[key].cleanAll !== false)
+                        totalCleanable += bytes;
                     this._rows[key].sizeLabel.set_text(formatBytes(bytes));
                     // A category is cleanable/sensitive only if its size exceeds 0 bytes
                     this._rows[key].btn.sensitive = bytes > 0;
@@ -314,7 +333,8 @@ export default class SpaceCleanerExtension extends Extension {
                     }
                 }
 
-                this._summaryLabel.set_text(_(`Total cleanable space: ${formatBytes(totalCleanable)}`));
+                this._cleanAllBtn.sensitive = totalCleanable > 0;
+                this._summaryLabel.set_text(_(`Clean All space: ${formatBytes(totalCleanable)} (separate items excluded)`));
             } catch (jsonErr) {
                 this._summaryLabel.set_text(_('Failed to parse scan metrics.'));
             }
@@ -332,7 +352,7 @@ export default class SpaceCleanerExtension extends Extension {
         rowObj.btn.set_label('Cleaning...');
 
         this._runHelperAsync(['clean', key], (stdout, err) => {
-            rowObj.btn.set_label('Clean Category');
+            rowObj.btn.set_label(CATEGORIES[key].cleanAll === false ? 'Clean Separately' : 'Clean Category');
             
             if (err) {
                 Main.notify('Space Cleaner', _(`Failed to clean ${CATEGORIES[key].label}: ${err.message}`));
@@ -374,7 +394,11 @@ export default class SpaceCleanerExtension extends Extension {
             try {
                 let res = JSON.parse(stdout.trim());
                 let totalFreed = res['freed'] || 0;
-                Main.notify('Space Cleaner', _(`All categories cleaned! Freed ${formatBytes(totalFreed)}.`));
+                let errors = res['errors'] || [];
+                if (errors.length > 0)
+                    Main.notify('Space Cleaner', _(`Clean All completed with ${errors.length} issue(s). Freed ${formatBytes(totalFreed)}.`));
+                else
+                    Main.notify('Space Cleaner', _(`All Clean All categories cleaned. Freed ${formatBytes(totalFreed)}.`));
             } catch (jsonErr) {
                 Main.notify('Space Cleaner', _('System cleanup successfully completed.'));
             }
