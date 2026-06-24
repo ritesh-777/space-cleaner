@@ -48,6 +48,10 @@ const CATEGORIES = {
         label: 'OS Package Cache', 
         desc: 'Cached package archives from updates/installs. Cleaning is safe; package manager will fetch new lists online.' 
     },
+    'aur_packages': {
+        label: 'AUR Packages',
+        desc: 'Built AUR package files from helpers such as Yay, Paru, Pikaur, and Trizen. Sources are kept; packages can be rebuilt when needed.'
+    },
     'journal': { 
         label: 'System Journal', 
         desc: 'Logs recorded by system services. Cleaning vacuums them down to 50MB, preserving recent diagnostics.' 
@@ -87,7 +91,7 @@ export default class SpaceCleanerExtension extends Extension {
         
         // 1. Setup Status Panel Icon (standard symbolic style)
         let icon = new St.Icon({
-            gicon: new Gio.ThemedIcon({name: 'drive-harddisk-symbolic'}),
+            gicon: new Gio.ThemedIcon({name: 'user-trash-symbolic'}),
             style_class: 'system-status-icon',
         });
         this._indicator.add_child(icon);
@@ -117,6 +121,8 @@ export default class SpaceCleanerExtension extends Extension {
         for (let key in CATEGORIES) {
             // PopupSubMenuMenuItem provides smooth drop-down collapse/expand behaviors
             let subMenu = new PopupMenu.PopupSubMenuMenuItem(CATEGORIES[key].label);
+            if (key === 'aur_packages')
+                subMenu.hide();
             
             // Current Size Label inserted before the drop-down expander triangle arrow
             let sizeLabel = new St.Label({
@@ -287,6 +293,15 @@ export default class SpaceCleanerExtension extends Extension {
                 let totalCleanable = 0;
 
                 for (let key in this._rows) {
+                    if (key === 'aur_packages') {
+                        if (data['arch_based'])
+                            this._rows[key].item.show();
+                        else {
+                            this._rows[key].item.hide();
+                            continue;
+                        }
+                    }
+
                     let bytes = data[key] || 0;
                     totalCleanable += bytes;
                     this._rows[key].sizeLabel.set_text(formatBytes(bytes));

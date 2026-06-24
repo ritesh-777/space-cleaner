@@ -8,8 +8,10 @@
 set -e
 
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/space-cleaner@ritesh"
+EXT_PARENT="$(dirname "$EXT_DIR")"
 
 echo "Installing GNOME Space Cleaner..."
+mkdir -p "$EXT_PARENT"
 
 if [ -d "$EXT_DIR" ]; then
     if [ -d "$EXT_DIR/.git" ]; then

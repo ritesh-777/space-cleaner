@@ -35,6 +35,106 @@ import subprocess
 
 # Standard User Home directory path resolution
 HOME = os.path.expanduser("~")
+USER_NAME = os.environ.get("USER") or os.path.basename(HOME)
+CACHE_HOME = os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache"))
+DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share"))
+NPM_CACHE_DIR = os.environ.get("npm_config_cache", os.path.join(HOME, ".npm"))
+TRASH_DIR = os.path.join(DATA_HOME, "Trash")
+THUMBNAILS_DIR = os.path.join(CACHE_HOME, "thumbnails")
+FLATPAK_CACHE_DIR = os.path.join(CACHE_HOME, "flatpak")
+PACMAN_CACHE_DIR = "/var/cache/pacman/pkg"
+JOURNAL_VACUUM_TARGET_BYTES = 50 * 1024 * 1024
+AUR_CACHE_ROOTS = [
+    os.path.join(CACHE_HOME, "yay"),
+    os.path.join(CACHE_HOME, "paru/clone"),
+    os.path.join(CACHE_HOME, "pikaur/pkg"),
+    os.path.join(CACHE_HOME, "pikaur/build"),
+    os.path.join(CACHE_HOME, "trizen"),
+    os.path.join(CACHE_HOME, "pacaur"),
+    os.path.join(CACHE_HOME, "aurman"),
+    os.path.join(CACHE_HOME, "pamac"),
+    os.path.join("/var/tmp", f"pamac-build-{USER_NAME}"),
+    os.path.join("/tmp", f"pamac-build-{USER_NAME}"),
+]
+
+def list_dir_entries(path):
+    """
+    Returns absolute child paths for a directory, or an empty list if inaccessible.
+    """
+    try:
+        return [os.path.join(path, entry) for entry in os.listdir(path)]
+    except Exception:
+        return []
+
+def remove_path_contents(path):
+    """
+    Removes all direct children of a directory and returns bytes removed.
+    """
+    freed = get_dir_size(path)
+    for item_path in list_dir_entries(path):
+        try:
+            if os.path.isdir(item_path) and not os.path.islink(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+        except Exception as err:
+            raise RuntimeError(f"Failed to remove {item_path}: {err}") from err
+    return freed
+
+def run_checked(cmd):
+    """
+    Runs a command and raises an actionable error if it fails.
+    """
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout or "Command failed.").strip()
+        raise RuntimeError(details)
+    return result
+
+def is_arch_based():
+    """
+    Detects Arch and Arch-derived distributions.
+    """
+    os_release = {}
+    try:
+        with open("/etc/os-release", "r", encoding="utf-8") as release_file:
+            for line in release_file:
+                if "=" not in line:
+                    continue
+                key, value = line.rstrip().split("=", 1)
+                os_release[key] = value.strip('"')
+    except Exception:
+        pass
+
+    distro_id = os_release.get("ID", "").lower()
+    id_like = os_release.get("ID_LIKE", "").lower().split()
+    return distro_id == "arch" or "arch" in id_like or shutil.which("pacman") is not None
+
+def is_package_artifact(path):
+    """
+    Identifies built Arch package artifacts and their detached signatures.
+    """
+    name = os.path.basename(path)
+    return ".pkg.tar" in name
+
+def iter_aur_package_artifacts():
+    """
+    Yields built AUR package files from common AUR helper cache directories.
+    """
+    if not is_arch_based():
+        return
+
+    for cache_root in AUR_CACHE_ROOTS:
+        if not os.path.exists(cache_root):
+            continue
+        try:
+            for root, dirs, files in os.walk(cache_root):
+                for filename in files:
+                    path = os.path.join(root, filename)
+                    if not os.path.islink(path) and is_package_artifact(path):
+                        yield path
+        except Exception:
+            continue
 
 def get_dir_size(path):
     """
@@ -72,6 +172,36 @@ def get_dir_size(path):
         pass
     return total_size
 
+def get_dir_disk_usage(path):
+    """
+    Calculates allocated disk usage for files under a path.
+    Sparse files, including systemd journals, can have a much larger apparent
+    size than the real disk space they currently consume.
+    """
+    total_size = 0
+    if not os.path.exists(path):
+        return 0
+
+    paths = []
+    if os.path.isfile(path) or os.path.islink(path):
+        paths.append(path)
+    else:
+        try:
+            for root, dirs, files in os.walk(path):
+                paths.append(root)
+                paths.extend(os.path.join(root, f) for f in files)
+        except Exception:
+            return 0
+
+    for item_path in paths:
+        try:
+            stat_result = os.lstat(item_path)
+            total_size += getattr(stat_result, "st_blocks", 0) * 512
+        except Exception:
+            pass
+
+    return total_size
+
 def get_trash_size():
     """
     Calculates the current size of the user's desktop Trash Bin.
@@ -79,8 +209,7 @@ def get_trash_size():
     Returns:
         int: Total trash size in bytes.
     """
-    trash_path = os.path.join(HOME, ".local/share/Trash")
-    return get_dir_size(trash_path)
+    return get_dir_size(TRASH_DIR)
 
 def get_thumbnails_size():
     """
@@ -89,8 +218,7 @@ def get_thumbnails_size():
     Returns:
         int: Total thumbnail cache size in bytes.
     """
-    thumb_path = os.path.join(HOME, ".cache/thumbnails")
-    return get_dir_size(thumb_path)
+    return get_dir_size(THUMBNAILS_DIR)
 
 def get_flatpak_size():
     """
@@ -100,7 +228,7 @@ def get_flatpak_size():
     Returns:
         int: Total Flatpak cache size in bytes.
     """
-    size = get_dir_size(os.path.join(HOME, ".cache/flatpak"))
+    size = get_dir_size(FLATPAK_CACHE_DIR)
     var_app = os.path.join(HOME, ".var/app")
     if os.path.exists(var_app):
         for app in os.listdir(var_app):
@@ -120,21 +248,37 @@ def get_dev_caches_size():
         int: Total developer caches size in bytes.
     """
     size = 0
-    size += get_dir_size(os.path.join(HOME, ".cache/pip"))
-    size += get_dir_size(os.path.join(HOME, ".npm/_cacache"))
-    size += get_dir_size(os.path.join(HOME, ".cache/yarn"))
+    size += get_dir_size(os.path.join(CACHE_HOME, "pip"))
+    size += get_dir_size(os.path.join(NPM_CACHE_DIR, "_cacache"))
+    size += get_dir_size(os.path.join(NPM_CACHE_DIR, "_npx"))
+    size += get_dir_size(os.path.join(NPM_CACHE_DIR, "_logs"))
+    size += get_dir_size(os.path.join(CACHE_HOME, "yarn"))
     size += get_dir_size(os.path.join(HOME, ".yarn/berry/cache"))
+    return size
+
+def get_aur_packages_size():
+    """
+    Calculates the size of built AUR package artifacts.
+    """
+    size = 0
+    for path in iter_aur_package_artifacts():
+        try:
+            size += os.path.getsize(path)
+        except Exception:
+            pass
     return size
 
 def get_journal_size():
     """
-    Calculates size of Systemd Journal logs in /var/log/journal.
-    Since journals are usually world-readable, we can scan them without root.
+    Calculates currently reclaimable Systemd Journal disk usage.
+    The cleaner vacuums journals to 50MB, so usage below that threshold should
+    not be shown as cleanable space.
     
     Returns:
-        int: Total journal logs size in bytes.
+        int: Reclaimable journal size in bytes.
     """
-    return get_dir_size("/var/log/journal")
+    usage = get_dir_disk_usage("/var/log/journal")
+    return max(usage - JOURNAL_VACUUM_TARGET_BYTES, 0)
 
 def get_snap_size():
     """
@@ -187,7 +331,7 @@ def get_package_cache_details():
         size += get_dir_size("/var/cache/apt/archives")
     elif shutil.which("pacman"):
         detected = "Pacman"
-        size += get_dir_size("/var/cache/pacman/pkg")
+        size += get_dir_size(PACMAN_CACHE_DIR)
     elif shutil.which("zypper"):
         detected = "Zypper"
         size += get_dir_size("/var/cache/zypp/packages")
@@ -210,6 +354,8 @@ def scan():
         "snap": get_snap_size(),
         "packages": pkg_size,
         "packages_mgr": pkg_mgr,
+        "arch_based": is_arch_based(),
+        "aur_packages": get_aur_packages_size(),
         "journal": get_journal_size(),
         "dev_caches": get_dev_caches_size(),
     }
@@ -222,11 +368,10 @@ def clean_trash():
     Returns:
         int: Number of bytes freed.
     """
-    trash_path = os.path.join(HOME, ".local/share/Trash")
     freed = get_trash_size()
-    if os.path.exists(trash_path):
+    if os.path.exists(TRASH_DIR):
         for sub in ["files", "info"]:
-            p = os.path.join(trash_path, sub)
+            p = os.path.join(TRASH_DIR, sub)
             if os.path.exists(p):
                 for item in os.listdir(p):
                     item_path = os.path.join(p, item)
@@ -246,10 +391,9 @@ def clean_thumbnails():
     Returns:
         int: Number of bytes freed.
     """
-    thumb_path = os.path.join(HOME, ".cache/thumbnails")
     freed = get_thumbnails_size()
-    if os.path.exists(thumb_path):
-        for root, dirs, files in os.walk(thumb_path):
+    if os.path.exists(THUMBNAILS_DIR):
+        for root, dirs, files in os.walk(THUMBNAILS_DIR):
             for f in files:
                 try:
                     os.remove(os.path.join(root, f))
@@ -269,12 +413,11 @@ def clean_flatpak():
     Returns:
         int: Number of bytes freed.
     """
-    freed = get_flatpak_size()
-    p = os.path.join(HOME, ".cache/flatpak")
-    if os.path.exists(p):
+    before = get_flatpak_size()
+    if os.path.exists(FLATPAK_CACHE_DIR):
         try:
-            shutil.rmtree(p)
-            os.makedirs(p, exist_ok=True)
+            shutil.rmtree(FLATPAK_CACHE_DIR)
+            os.makedirs(FLATPAK_CACHE_DIR, exist_ok=True)
         except Exception:
             pass
     var_app = os.path.join(HOME, ".var/app")
@@ -287,7 +430,8 @@ def clean_flatpak():
                     os.makedirs(app_cache, exist_ok=True)
                 except Exception:
                     pass
-    return freed
+    after = get_flatpak_size()
+    return max(before - after, 0)
 
 def clean_dev_caches():
     """
@@ -296,26 +440,36 @@ def clean_dev_caches():
     Returns:
         int: Number of bytes freed.
     """
-    freed = get_dev_caches_size()
-    p = os.path.join(HOME, ".cache/pip")
-    if os.path.exists(p):
-        try:
-            shutil.rmtree(p)
-        except Exception:
-            pass
-    p = os.path.join(HOME, ".npm/_cacache")
-    if os.path.exists(p):
-        try:
-            shutil.rmtree(p)
-        except Exception:
-            pass
-    for p in [os.path.join(HOME, ".cache/yarn"), os.path.join(HOME, ".yarn/berry/cache")]:
+    before = get_dev_caches_size()
+    paths = [
+        os.path.join(CACHE_HOME, "pip"),
+        os.path.join(NPM_CACHE_DIR, "_cacache"),
+        os.path.join(NPM_CACHE_DIR, "_npx"),
+        os.path.join(NPM_CACHE_DIR, "_logs"),
+        os.path.join(CACHE_HOME, "yarn"),
+        os.path.join(HOME, ".yarn/berry/cache"),
+    ]
+    for p in paths:
         if os.path.exists(p):
             try:
                 shutil.rmtree(p)
             except Exception:
                 pass
-    return freed
+    after = get_dev_caches_size()
+    return max(before - after, 0)
+
+def clean_aur_packages():
+    """
+    Deletes built AUR package artifacts from common AUR helper caches.
+    """
+    before = get_aur_packages_size()
+    for path in list(iter_aur_package_artifacts()):
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    after = get_aur_packages_size()
+    return max(before - after, 0)
 
 def clean_snap():
     """
@@ -327,8 +481,9 @@ def clean_snap():
     freed = get_snap_size()
     commands = []
     
-    if os.path.exists("/var/lib/snapd/cache") and os.listdir("/var/lib/snapd/cache"):
-        commands.append(["pkexec", "rm", "-rf", "/var/lib/snapd/cache/*"])
+    snap_cache_entries = list_dir_entries("/var/lib/snapd/cache")
+    if snap_cache_entries:
+        commands.append(["pkexec", "rm", "-rf", *snap_cache_entries])
         
     if shutil.which("snap") and os.path.exists("/var/lib/snapd/snaps"):
         try:
@@ -369,7 +524,8 @@ def clean_packages():
     elif pkg_mgr == "APT":
         cmd = ["pkexec", "apt-get", "clean"]
     elif pkg_mgr == "Pacman":
-        cmd = ["pkexec", "pacman", "-Sc", "--noconfirm"]
+        helper_path = os.path.abspath(__file__)
+        cmd = ["pkexec", "python3", helper_path, "clean-pacman-cache-root"]
     elif pkg_mgr == "Zypper":
         cmd = ["pkexec", "zypper", "clean", "-a"]
     elif pkg_mgr == "Portage":
@@ -381,17 +537,28 @@ def clean_packages():
                 pass
         else:
             try:
-                subprocess.run(["pkexec", "rm", "-rf", "/var/cache/distfiles/*", "/var/cache/binpkgs/*"], check=False)
+                cache_entries = (
+                    list_dir_entries("/var/cache/distfiles") +
+                    list_dir_entries("/var/cache/binpkgs")
+                )
+                if cache_entries:
+                    subprocess.run(["pkexec", "rm", "-rf", *cache_entries], check=False)
             except Exception:
                 pass
             
     if cmd:
-        try:
-            subprocess.run(cmd, check=False)
-        except Exception:
-            pass
+        run_checked(cmd)
             
     return freed
+
+def clean_pacman_cache_root():
+    """
+    Root-only Pacman cache cleanup used through pkexec.
+    """
+    if os.geteuid() != 0:
+        raise RuntimeError("Pacman cache cleanup requires administrator privileges.")
+    freed = remove_path_contents(PACMAN_CACHE_DIR)
+    print(json.dumps({"category": "packages", "freed": freed}))
 
 def clean_journal():
     """
@@ -400,12 +567,10 @@ def clean_journal():
     Returns:
         int: Number of bytes freed.
     """
-    freed = get_journal_size()
-    try:
-        subprocess.run(["pkexec", "journalctl", "--vacuum-size=50M"], check=False)
-    except Exception:
-        pass
-    return freed
+    before = get_dir_disk_usage("/var/log/journal")
+    run_checked(["pkexec", "journalctl", "--rotate", "--vacuum-size=50M"])
+    after = get_dir_disk_usage("/var/log/journal")
+    return max(before - after, 0)
 
 def clean(category):
     """
@@ -424,6 +589,8 @@ def clean(category):
         freed = clean_snap()
     elif category == "packages":
         freed = clean_packages()
+    elif category == "aur_packages":
+        freed = clean_aur_packages()
     elif category == "journal":
         freed = clean_journal()
     print(json.dumps({"category": category, "freed": freed}))
@@ -439,6 +606,7 @@ def clean_all():
     freed += clean_dev_caches()
     freed += clean_snap()
     freed += clean_packages()
+    freed += clean_aur_packages()
     freed += clean_journal()
     print(json.dumps({"category": "all", "freed": freed}))
 
@@ -457,6 +625,8 @@ def main():
         clean_all()
     elif cmd == "clean" and len(sys.argv) >= 3:
         clean(sys.argv[2])
+    elif cmd == "clean-pacman-cache-root":
+        clean_pacman_cache_root()
     else:
         print(f"Unknown command or missing argument: {cmd}")
         sys.exit(1)
