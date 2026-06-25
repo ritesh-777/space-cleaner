@@ -21,7 +21,7 @@ The extension is designed for public release, fully **distribution-agnostic**, a
     *   **Gentoo**: Displays **"Portage Cache"** pointing to `/var/cache/distfiles` and `/var/cache/binpkgs`.
 *   **🛡️ Password Prompt Elevation only when needed**: The extension scans system directories inside user-space without any passwords (they are world-readable!). A graphical admin password prompt (`pkexec`) is triggered **only when the user clicks the "Clean" button** for system-space folders.
 *   **📝 Systemd Journal Vacuuming**: Safely rotates and vacuums large service logging caches inside `/var/log/journal` down to a secure 50MB threshold, retaining recent logs for diagnostic safety.
-*   **🧩 Arch, Manjaro, and AUR Awareness**: On Arch-based systems, Space Cleaner shows an AUR package cleanup row for built package artifacts from helpers such as Yay, Paru, Pikaur, Trizen, and Pamac build directories.
+*   **🧩 Arch, Manjaro, and AUR Awareness**: On Arch-based systems, Space Cleaner shows an AUR package cleanup row for built package artifacts and Pamac AUR build files from helpers such as Yay, Paru, Pikaur, Trizen, and Pamac.
 *   **🧹 Safe Clean All Scope**: Clean All includes low-surprise cleanup targets such as trash, thumbnails, font cache, Flatpak cache, package cache, AUR package artifacts, journal cleanup, coredumps, Snap cleanup, and developer caches.
 *   **⚠️ Separate Browser & Shader Cleanup**: Browser and shader caches are shown as separate categories and excluded from Clean All because they can cause slower first page loads or temporary graphics/game stutter while caches rebuild.
 *   **🛠️ Developer Caches Support**: Easily reclaims gigabytes of forgotten local caches created by Python's **Pip**, Node's **NPM**, and **Yarn** package managers.
@@ -58,7 +58,7 @@ Cleans compiled package files (`.rpm`, `.deb`, `.pkg.tar.zst`) left behind in `/
 
 <details>
 <summary><b>📦 AUR Packages</b> (Arch-based systems only)</summary>
-Removes built AUR package artifacts (`*.pkg.tar*`) from common helper caches including Yay, Paru, Pikaur, Trizen, Pacaur, Aurman, and Manjaro Pamac build locations such as `/var/tmp/pamac-build-$USER`. It keeps source/build directories and PKGBUILDs intact.
+Removes built AUR package artifacts (`*.pkg.tar*`) from common helper caches including Yay, Paru, Pikaur, Trizen, Pacaur, and Aurman. On Manjaro/Pamac, it also removes Pamac package build directories such as `/var/tmp/pamac-build-$USER/<package>`, matching Pamac's own build-file cleanup behavior.
 </details>
 
 <details>

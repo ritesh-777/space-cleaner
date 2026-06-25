@@ -87,6 +87,10 @@ AUR_CACHE_ROOTS = [
     os.path.join("/var/tmp", f"pamac-build-{USER_NAME}"),
     os.path.join("/tmp", f"pamac-build-{USER_NAME}"),
 ]
+PAMAC_BUILD_BASE_FALLBACKS = [
+    "/var/tmp",
+    "/tmp",
+]
 
 def list_dir_entries(path):
     """
@@ -166,6 +170,47 @@ def iter_aur_package_artifacts():
                         yield path
         except Exception:
             continue
+
+def get_pamac_build_bases():
+    """
+    Returns Pamac build base directories from config plus common fallbacks.
+    """
+    bases = []
+    try:
+        with open("/etc/pamac.conf", "r", encoding="utf-8") as config_file:
+            for line in config_file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = [part.strip() for part in line.split("=", 1)]
+                if key == "BuildDirectory" and value:
+                    bases.append(os.path.expanduser(value))
+    except Exception:
+        pass
+
+    bases.extend(PAMAC_BUILD_BASE_FALLBACKS)
+    return unique_existing_paths(bases)
+
+def get_pamac_build_roots():
+    """
+    Returns Pamac per-user AUR build roots, such as /var/tmp/pamac-build-user.
+    """
+    roots = [
+        os.path.join(base, f"pamac-build-{USER_NAME}")
+        for base in get_pamac_build_bases()
+    ]
+    return unique_existing_paths(roots)
+
+def get_pamac_build_package_dirs():
+    """
+    Returns package build directories managed by Pamac.
+    """
+    dirs = []
+    for root in get_pamac_build_roots():
+        for path in list_dir_entries(root):
+            if os.path.isdir(path) and not os.path.islink(path):
+                dirs.append(path)
+    return unique_existing_paths(dirs, get_pamac_build_roots())
 
 def is_path_inside(path, base_dir):
     """
@@ -356,10 +401,16 @@ def get_dev_caches_size():
 
 def get_aur_packages_size():
     """
-    Calculates the size of built AUR package artifacts.
+    Calculates the size of built AUR package artifacts and Pamac build files.
     """
     size = 0
+    pamac_build_dirs = get_pamac_build_package_dirs()
+    for path in pamac_build_dirs:
+        size += get_dir_size(path)
+
     for path in iter_aur_package_artifacts():
+        if any(is_path_inside(path, build_dir) for build_dir in pamac_build_dirs):
+            continue
         try:
             size += os.path.getsize(path)
         except Exception:
@@ -597,10 +648,19 @@ def clean_dev_caches():
 
 def clean_aur_packages():
     """
-    Deletes built AUR package artifacts from common AUR helper caches.
+    Deletes built AUR package artifacts and Pamac AUR build files.
     """
     before = get_aur_packages_size()
+    for path in get_pamac_build_package_dirs():
+        try:
+            shutil.rmtree(path)
+        except Exception:
+            pass
+
+    pamac_build_dirs = get_pamac_build_package_dirs()
     for path in list(iter_aur_package_artifacts()):
+        if any(is_path_inside(path, build_dir) for build_dir in pamac_build_dirs):
+            continue
         try:
             os.remove(path)
         except Exception:

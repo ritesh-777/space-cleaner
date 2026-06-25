@@ -54,7 +54,7 @@ const CATEGORIES = {
     },
     'aur_packages': {
         label: 'AUR Packages',
-        desc: 'Built AUR package files from helpers such as Yay, Paru, Pikaur, and Trizen. Sources are kept; packages can be rebuilt when needed.'
+        desc: 'Built AUR package artifacts and Pamac build files from helpers such as Yay, Paru, Pikaur, Trizen, and Pamac. These can be rebuilt when needed.'
     },
     'journal': { 
         label: 'System Journal', 
