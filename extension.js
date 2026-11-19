@@ -14,6 +14,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 
 // GNOME UI components must be imported as ES Modules (ESM) namespaces in GNOME 45+.
@@ -81,6 +82,24 @@ const CATEGORIES = {
 };
 
 /**
+ * St.BoxLayout's orientation: GNOME 48+ has `orientation`, and GNOME 51 removed the older `vertical` property,
+ * which GNOME 45-47 still need.
+ */
+const HAS_ORIENTATION = GObject.Object.find_property.call(St.BoxLayout.$gtype, 'orientation') !== null;
+
+/**
+ * Properties for a vertical St.BoxLayout on any supported GNOME version.
+ *
+ * @param {object} params - The other properties.
+ * @returns {object} `params` with the vertical orientation added.
+ */
+function vertical(params) {
+    return HAS_ORIENTATION
+        ? {...params, orientation: Clutter.Orientation.VERTICAL}
+        : {...params, vertical: true};
+}
+
+/**
  * Format bytes to human-readable strings (e.g. 1.2 GB, 450.5 MB).
  * 
  * @param {number} bytes - Size in bytes.
@@ -115,10 +134,9 @@ export default class SpaceCleanerExtension extends Extension {
         this._indicator.add_child(icon);
 
         // 2. Setup the Dropdown Menu Box Container
-        this._menuBox = new St.BoxLayout({
-            vertical: true,
+        this._menuBox = new St.BoxLayout(vertical({
             style_class: 'space-cleaner-menu-box'
-        });
+        }));
 
         // Header Title Label
         let titleLabel = new St.Label({
@@ -152,10 +170,9 @@ export default class SpaceCleanerExtension extends Extension {
             subMenu.insert_child_at_index(sizeLabel, subMenu.get_children().length - 1);
 
             // Container box positioned inside the collapsed dropdown drawer
-            let subMenuBox = new St.BoxLayout({
-                vertical: true,
+            let subMenuBox = new St.BoxLayout(vertical({
                 style_class: 'space-cleaner-sub-box'
-            });
+            }));
 
             // Localized Description Card (word wraps safely using Pango)
             let descLabel = new St.Label({
@@ -194,8 +211,8 @@ export default class SpaceCleanerExtension extends Extension {
         this._indicator.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Footer layout block
+        // Horizontal, St.BoxLayout's default on every GNOME version
         let footer = new St.BoxLayout({
-            vertical: false,
             style_class: 'space-cleaner-footer-box'
         });
 
