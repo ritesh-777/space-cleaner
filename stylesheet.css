@@ -106,3 +106,9 @@
     border-color: transparent;
     color: rgba(255, 255, 255, 0.35);
 }
+
+/* The bar's button: GNOME's wide spacing round it narrowed. */
+#panel .panel-button.space-cleaner-panel-button {
+    -natural-hpadding: 6px;
+    -minimum-hpadding: 4px;
+}

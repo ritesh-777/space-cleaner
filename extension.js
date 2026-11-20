@@ -125,6 +125,8 @@ export default class SpaceCleanerExtension extends Extension {
     enable() {
         // Instantiate the top panel indicator button
         this._indicator = new PanelMenu.Button(0.0, _('Space Cleaner'));
+        // Narrower than the bar's other buttons, so it does not stand apart from its neighbours (stylesheet.css).
+        this._indicator.add_style_class_name('space-cleaner-panel-button');
         
         // 1. Setup Status Panel Icon (standard symbolic style)
         let icon = new St.Icon({
